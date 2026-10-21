@@ -80,46 +80,57 @@
     });
   }
 
-  // Anfrageformular: baut eine E-Mail, kein Server noetig
+  // Anfrage- und Mietanfrageformular: bauen eine E-Mail, kein Server, keine Speicherung
   var form = $("[data-form]");
   if (form) {
     var params = new URLSearchParams(location.search);
-    if (params.get("produkt")) form.produkt.value = params.get("produkt");
-    if (params.get("betreff")) {
+    if (params.get("produkt") && form.produkt) form.produkt.value = params.get("produkt");
+    if (params.get("betreff") && form.betreff) {
       $$("option", form.betreff).forEach(function (o) { if (o.value === params.get("betreff")) form.betreff.value = o.value; });
     }
+    // Mietanfrage: Lieferadresse wie oben
+    var same = $("[data-same]"), liefer = $("[data-liefer]");
+    if (same && liefer) {
+      var sync = function () {
+        liefer.hidden = same.checked;
+        $$("input", liefer).forEach(function (i) { i.required = !same.checked; });
+      };
+      same.addEventListener("change", sync);
+      sync();
+    }
     var note = $("[data-note]");
+    var label = function (el) {
+      var l = el.closest("label");
+      var t = l ? (l.querySelector("span") || l).textContent : el.name;
+      return t.replace(/\s*\*\s*$/, "").trim();
+    };
     form.addEventListener("submit", function (e) {
       e.preventDefault();
       var bad = [];
-      ["nachname", "email"].forEach(function (n) {
-        var el = form[n], ok = el.value.trim() && (n !== "email" || /.+@.+\..+/.test(el.value));
+      $$("input, select, textarea", form).forEach(function (el) {
+        if (!el.required || el.closest("[hidden]")) { el.classList.remove("bad"); return; }
+        var ok = el.type === "checkbox" ? el.checked : el.value.trim() !== "" && (el.type !== "email" || /.+@.+\..+/.test(el.value));
         el.classList.toggle("bad", !ok);
         if (!ok) bad.push(el);
       });
-      if (!form.ds.checked) bad.push(form.ds);
       if (bad.length) {
-        note.textContent = "Bitte Nachname, eine gültige E-Mail-Adresse und die Einwilligung zum Datenschutz angeben.";
+        note.textContent = "Bitte alle Pflichtfelder (mit *) ausfüllen und der Datenschutzerklärung zustimmen.";
         note.className = "form-note err";
         bad[0].focus();
         return;
       }
+      var lines = [(form.dataset.subject || "Anfrage") + " über mobiler-raum.de", ""];
+      $$("input, select, textarea", form).forEach(function (el) {
+        if (!el.name || el.name === "ds" || el.type === "checkbox" || el.closest("[hidden]")) return;
+        var val = el.value.trim();
+        if (!val) return;
+        if (el.type === "date") { var d = val.split("-"); val = d[2] + "." + d[1] + "." + d[0]; }
+        lines.push(el.tagName === "TEXTAREA" ? "\n" + val + "\n" : label(el) + ": " + val);
+      });
+      if (same && same.checked) lines.push("Lieferadresse: wie oben");
       var v = function (n) { return (form[n] && form[n].value || "").trim(); };
-      var art = (form.querySelector("input[name=art]:checked") || {}).value || "";
-      var body = [
-        "Anfrage über mobiler-raum.de", "",
-        "Art: " + art,
-        "Produkt/Kategorie: " + v("produkt"),
-        "Einsatzort: " + v("ort"),
-        "Zeitraum: " + v("zeitraum"), "",
-        v("nachricht"), "",
-        "Name: " + (v("vorname") + " " + v("nachname")).trim(),
-        "Firma: " + v("firma"),
-        "Telefon: " + v("telefon"),
-        "E-Mail: " + v("email")
-      ].join("\n");
-      var subject = v("betreff") + (v("produkt") ? ": " + v("produkt") : "");
-      location.href = "mailto:mail@mobiler-raum.de?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
+      var subject = (form.dataset.subject || "Anfrage") + (v("containerart") ? ": " + v("containerart") : v("produkt") ? ": " + v("produkt") : v("betreff") ? ": " + v("betreff") : "");
+      location.href = "mailto:mail@mobiler-raum.de?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(lines.join("\n"));
       note.textContent = "Ihr E-Mail-Programm wurde geöffnet. Bitte senden Sie die vorbereitete Nachricht ab.";
       note.className = "form-note ok";
     });
